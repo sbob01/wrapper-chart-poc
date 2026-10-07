@@ -1,0 +1,12 @@
+apiVersion: v2
+name: apigee-hybrid-wrapper
+description: Minimal wrapper chart around Apigee Hybrid
+version: 1.15.0
+appVersion: "1.15.0"
+type: application
+
+dependencies:
+  - name: apigee-hybrid
+    # Placeholder: replace repository/name with the real upstream source.
+    version: 1.15.0
+    repository: "https://example.invalid/apigee-hybrid"

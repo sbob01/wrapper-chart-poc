@@ -1,0 +1,103 @@
+name: Follow latest Apigee line
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      simulated_upstream_version:
+        description: "Temporary test input, e.g. 1.16.0"
+        required: false
+        type: string
+      persist_changes:
+        description: "Commit/push version changes to main"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  update-head:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Find latest upstream version
+        id: upstream
+        env:
+          SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
+        run: ./scripts/find_latest_upstream.sh
+
+      - name: Nothing to check yet
+        if: steps.upstream.outputs.version == ''
+        run: |
+          echo "No upstream lookup is configured yet."
+          echo "Run manually with simulated_upstream_version to test the workflow."
+
+      - name: Calculate and apply wrapper version
+        if: steps.upstream.outputs.version != ''
+        id: version
+        run: |
+          python3 scripts/version_logic.py \
+            --mode latest \
+            --target-upstream "${{ steps.upstream.outputs.version }}" \
+            --write
+
+      - name: Validate chart skeleton
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          helm lint chart-wrapper --dependency-update || {
+            echo "Expected to fail until the placeholder upstream repository is replaced."
+            echo "For now, validating only that local templates render without dependency resolution."
+            helm template wrapper-demo chart-wrapper --dependency-update=false || true
+          }
+
+      - name: Show release-line transition
+        if: steps.version.outputs.changed == 'true' && (steps.version.outputs.change_type == 'minor' || steps.version.outputs.change_type == 'major')
+        run: |
+          echo "A new upstream major/minor line was detected."
+          echo "Previous upstream was ${{ steps.version.outputs.old_upstream }}."
+          echo "With persist_changes=true, its X.Y branch will be preserved before main is advanced."
+
+      - name: Preserve previous support line
+        if: steps.version.outputs.changed == 'true' && (steps.version.outputs.change_type == 'minor' || steps.version.outputs.change_type == 'major') && inputs.persist_changes == true
+        env:
+          OLD_UPSTREAM: ${{ steps.version.outputs.old_upstream }}
+        run: |
+          line="$(echo "$OLD_UPSTREAM" | cut -d. -f1,2)"
+          branch="release/apigee-$line"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "$branch already exists; leaving it unchanged."
+          else
+            git branch "$branch" "$GITHUB_SHA"
+            git push origin "$branch"
+            echo "Created $branch from the pre-upgrade main commit."
+          fi
+
+      - name: Simulate ECR publish
+        if: steps.version.outputs.changed == 'true'
+        run: echo "tratando de subir ${{ steps.version.outputs.new_wrapper }}"
+
+      # Real publication would eventually look conceptually like:
+      # - helm dependency update chart-wrapper
+      # - helm package chart-wrapper --destination dist
+      # - aws-actions/configure-aws-credentials using OIDC
+      # - aws ecr get-login-password | helm registry login ...
+      # - helm push dist/apigee-hybrid-wrapper-${VERSION}.tgz oci://ACCOUNT.dkr.ecr.REGION.amazonaws.com/...
+
+      - name: Persist changed Chart.yaml
+        if: steps.version.outputs.changed == 'true' && inputs.persist_changes == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chart-wrapper/Chart.yaml
+          git commit -m "chore: follow Apigee ${{ steps.version.outputs.new_upstream }}"
+          git push

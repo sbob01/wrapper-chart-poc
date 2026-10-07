@@ -1,0 +1,94 @@
+name: Maintain supported Apigee lines
+
+on:
+  schedule:
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+    inputs:
+      simulated_upstream_version:
+        description: "Temporary test input, e.g. 1.15.7"
+        required: false
+        type: string
+      support_line:
+        description: "Optional manual test filter, e.g. 1.15"
+        required: false
+        type: string
+      persist_changes:
+        description: "Commit/push patch update to release branch"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  discover-lines:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.lines.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read supported lines
+        id: lines
+        env:
+          FILTER: ${{ inputs.support_line }}
+        run: |
+          if [[ -n "$FILTER" ]]; then
+            echo "matrix=[\"$FILTER\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(tr -d '\n ' < config/supported-lines.json)" >> "$GITHUB_OUTPUT"
+          fi
+
+  maintain:
+    needs: discover-lines
+    strategy:
+      fail-fast: false
+      matrix:
+        line: ${{ fromJSON(needs.discover-lines.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout support branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/apigee-${{ matrix.line }}
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Find latest patch for support line
+        id: upstream
+        env:
+          SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
+        run: ./scripts/find_latest_patch.sh "${{ matrix.line }}"
+
+      - name: Nothing to check yet
+        if: steps.upstream.outputs.version == ''
+        run: echo "No newer candidate supplied/configured for support line ${{ matrix.line }}"
+
+      - name: Calculate patch-only update
+        if: steps.upstream.outputs.version != ''
+        id: version
+        run: |
+          python3 scripts/version_logic.py \
+            --mode patch-only \
+            --target-upstream "${{ steps.upstream.outputs.version }}" \
+            --write
+
+      - name: Simulate ECR publish
+        if: steps.version.outputs.changed == 'true'
+        run: echo "tratando de subir ${{ steps.version.outputs.new_wrapper }}"
+
+      # Same future real ECR steps as in follow-latest.yml:
+      # dependency update -> lint/tests -> helm package -> AWS OIDC login -> helm push OCI.
+
+      - name: Persist support-line update
+        if: steps.version.outputs.changed == 'true' && inputs.persist_changes == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chart-wrapper/Chart.yaml
+          git commit -m "chore: update Apigee ${{ steps.version.outputs.new_upstream }} on ${{ matrix.line }}"
+          git push origin HEAD:release/apigee-${{ matrix.line }}

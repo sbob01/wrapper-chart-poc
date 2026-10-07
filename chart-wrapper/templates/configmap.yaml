@@ -1,0 +1,8 @@
+{{- if .Values.wrapper.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-wrapper-demo
+data:
+  message: {{ .Values.wrapper.message | quote }}
+{{- end }}
