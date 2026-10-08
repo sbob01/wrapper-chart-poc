@@ -1,8 +1,8 @@
 name: Maintain supported Apigee lines
 
 on:
-  schedule:
-    - cron: "43 5 * * *"
+#  schedule:
+#    - cron: "43 5 * * *"
   workflow_dispatch:
     inputs:
       simulated_upstream_version:

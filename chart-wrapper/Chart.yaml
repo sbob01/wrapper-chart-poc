@@ -1,12 +1,48 @@
 apiVersion: v2
 name: apigee-hybrid-wrapper
 description: Minimal wrapper chart around Apigee Hybrid
-version: 1.15.0
+version: 1.16.0
 appVersion: "1.15.0"
 type: application
 
 dependencies:
-  - name: apigee-hybrid
-    # Placeholder: replace repository/name with the real upstream source.
+  - name: apigee-operator
     version: 1.15.0
-    repository: "https://example.invalid/apigee-hybrid"
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-datastore
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-telemetry
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-redis
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-ingress-manager
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-org
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-env
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-virtualhost
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-datastore
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
+  - name: apigee-datastore
+    version: 1.15.0
+    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
+
