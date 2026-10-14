@@ -1,8 +1,8 @@
 name: Maintain supported Apigee lines
 
 on:
-#  schedule:
-#    - cron: "43 5 * * *"
+ schedule:
+   - cron: "43 5 * * *"
   workflow_dispatch:
     inputs:
       simulated_upstream_version:
@@ -79,7 +79,24 @@ jobs:
 
       - name: Simulate ECR publish
         if: steps.version.outputs.changed == 'true'
-        run: echo "tratando de subir ${{ steps.version.outputs.new_wrapper }}"
+        env:
+          CHART_VERSION: ${{ steps.version.outputs.new_wrapper }}
+        run: |
+          mkdir -p ecr
+          touch "ecr/apigee-hybrid-${CHART_VERSION}"
+
+      - name: Persist support-line update
+        if: steps.version.outputs.changed == 'true' && inputs.persist_changes == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add chart-wrapper/Chart.yaml ecr/
+
+          git commit \
+            -m "chore: update Apigee ${{ steps.version.outputs.new_upstream }} on ${{ matrix.line }}"
+
+          git push origin HEAD:release/apigee-${{ matrix.line }}
 
       # Same future real ECR steps as in follow-latest.yml:
       # dependency update -> lint/tests -> helm package -> AWS OIDC login -> helm push OCI.

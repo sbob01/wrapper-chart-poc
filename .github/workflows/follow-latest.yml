@@ -1,12 +1,12 @@
 name: Follow latest Apigee line
 
 on:
-#  schedule:
-#    - cron: "17 5 * * *"
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
     inputs:
       simulated_upstream_version:
-        description: "Temporary test input, e.g. 1.16.0"
+        description: "Temporary test input, e.g. 1.17.10hotfix.22"
         required: false
         type: string
       persist_changes:
@@ -17,10 +17,47 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+
+env:
+  AWS_REGION: eu-west-1
+  AWS_ACCOUNT_ID: "123456789012"
+  ECR_REPOSITORY: apigee-hybrid-charts
 
 jobs:
+
+  update-supported-lines:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Discover latest supported lines
+        run: |
+          ./scripts/find_latest_lines.sh 12 5 > /tmp/supported-lines.json
+          mv /tmp/supported-lines.json config/supported-lines.json
+
+      - name: Commit supported lines if changed
+        run: |
+          if git diff --quiet -- config/supported-lines.json; then
+            echo "Supported lines unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add config/supported-lines.json
+          git commit -m "chore: update supported Apigee lines"
+          git push
+
+
   update-head:
     runs-on: ubuntu-latest
+    needs: update-supported-lines
+
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -36,11 +73,10 @@ jobs:
           SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
         run: ./scripts/find_latest_upstream.sh
 
-      - name: Nothing to check yet
+      - name: Nothing to update
         if: steps.upstream.outputs.version == ''
         run: |
-          echo "No upstream lookup is configured yet."
-          echo "Run manually with simulated_upstream_version to test the workflow."
+          echo "No upstream Apigee version was found."
 
       - name: Calculate and apply wrapper version
         if: steps.upstream.outputs.version != ''
@@ -51,21 +87,27 @@ jobs:
             --target-upstream "${{ steps.upstream.outputs.version }}" \
             --write
 
-      - name: Validate chart skeleton
+      # This downloads the 8 Apigee upstream charts declared as
+      # dependencies in chart-wrapper/Chart.yaml.
+      - name: Download upstream dependencies
         if: steps.version.outputs.changed == 'true'
         run: |
-          helm lint chart-wrapper --dependency-update || {
-            echo "Expected to fail until the placeholder upstream repository is replaced."
-            echo "For now, validating only that local templates render without dependency resolution."
-            helm template wrapper-demo chart-wrapper --dependency-update=false || true
-          }
+          echo "Downloading Apigee Hybrid ${{ steps.version.outputs.new_upstream }} dependencies"
+          helm dependency update chart-wrapper
+
+      - name: Validate chart
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          helm lint chart-wrapper
+          helm template wrapper-demo chart-wrapper > /dev/null
 
       - name: Show release-line transition
         if: steps.version.outputs.changed == 'true' && (steps.version.outputs.change_type == 'minor' || steps.version.outputs.change_type == 'major')
         run: |
           echo "A new upstream major/minor line was detected."
           echo "Previous upstream was ${{ steps.version.outputs.old_upstream }}."
-          echo "With persist_changes=true, its X.Y branch will be preserved before main is advanced."
+          echo "New upstream is ${{ steps.version.outputs.new_upstream }}."
+          echo "The previous X.Y line should be preserved as a support branch."
 
       - name: Preserve previous support line
         if: steps.version.outputs.changed == 'true' && (steps.version.outputs.change_type == 'minor' || steps.version.outputs.change_type == 'major') && inputs.persist_changes == true
@@ -74,6 +116,7 @@ jobs:
         run: |
           line="$(echo "$OLD_UPSTREAM" | cut -d. -f1,2)"
           branch="release/apigee-$line"
+
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
             echo "$branch already exists; leaving it unchanged."
           else
@@ -82,22 +125,76 @@ jobs:
             echo "Created $branch from the pre-upgrade main commit."
           fi
 
+      # ------------------------------------------------------------------
+      # SIMULATED AWS/ECR PUBLICATION
+      #
+      # We assume GitHub -> AWS OIDC federation already exists.
+      # These echo commands show what the real publication would execute.
+      # ------------------------------------------------------------------
+
+      - name: Simulate AWS authentication
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          echo "Would authenticate to AWS using GitHub OIDC:"
+          echo "aws-actions/configure-aws-credentials"
+          echo "  role-to-assume: arn:aws:iam::${AWS_ACCOUNT_ID}:role/github-apigee-chart-publisher"
+          echo "  aws-region: ${AWS_REGION}"
+
+      - name: Simulate ECR login
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          echo "Would login Helm to ECR:"
+          echo "aws ecr get-login-password --region ${AWS_REGION} | helm registry login --username AWS --password-stdin ${ECR_REGISTRY}"
+
+      - name: Simulate wrapper packaging
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.new_wrapper }}"
+
+          echo "Would package wrapper version ${VERSION}:"
+          echo "helm package chart-wrapper --destination dist"
+          echo ""
+          echo "Expected package:"
+          echo "dist/apigee-hybrid-wrapper-${VERSION}.tgz"
+
       - name: Simulate ECR publish
         if: steps.version.outputs.changed == 'true'
-        run: echo "tratando de subir ${{ steps.version.outputs.new_wrapper }}"
+        run: |
+          VERSION="${{ steps.version.outputs.new_wrapper }}"
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-      # Real publication would eventually look conceptually like:
-      # - helm dependency update chart-wrapper
-      # - helm package chart-wrapper --destination dist
-      # - aws-actions/configure-aws-credentials using OIDC
-      # - aws ecr get-login-password | helm registry login ...
-      # - helm push dist/apigee-hybrid-wrapper-${VERSION}.tgz oci://ACCOUNT.dkr.ecr.REGION.amazonaws.com/...
+          echo "tratando de subir ${VERSION}"
+          echo ""
+          echo "Would execute:"
+          echo "helm push dist/apigee-hybrid-wrapper-${VERSION}.tgz oci://${ECR_REGISTRY}/${ECR_REPOSITORY}"
 
       - name: Persist changed Chart.yaml
         if: steps.version.outputs.changed == 'true' && inputs.persist_changes == true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chart-wrapper/Chart.yaml
-          git commit -m "chore: follow Apigee ${{ steps.version.outputs.new_upstream }}"
+
+          git add chart-wrapper/Chart.yaml chart-wrapper/Chart.lock
+
+          git commit \
+            -m "chore: follow Apigee ${{ steps.version.outputs.new_upstream }}"
+
           git push
+
+      - name: Simulate ECR push
+        run: |
+          touch "ecr/${CHART_NAME}-${CHART_VERSION}"
+
+      - name: Commit simulated ECR state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add ecr/
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: publish ${CHART_NAME}-${CHART_VERSION}"
+            git push
+          fi
