@@ -70,7 +70,7 @@ jobs:
       - name: Find latest upstream version
         id: upstream
         env:
-          SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
+          SIMULATED_UPSTREAM_VERSIONS: ${{ inputs.simulated_upstream_version }}
         run: bash ./scripts/find_latest_upstream.sh
 
       - name: Nothing to update
