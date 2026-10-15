@@ -38,11 +38,4 @@ dependencies:
     version: 1.15.0
     repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
 
-  - name: apigee-datastore
-    version: 1.15.0
-    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
-
-  - name: apigee-datastore
-    version: 1.15.0
-    repository: "oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts"
-
+  
