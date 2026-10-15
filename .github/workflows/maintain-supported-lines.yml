@@ -62,7 +62,7 @@ jobs:
         id: upstream
         env:
           SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
-        run: ./scripts/find_latest_patch.sh "${{ matrix.line }}"
+        run: bash ./scripts/find_latest_patch.sh "${{ matrix.line }}"
 
       - name: Nothing to check yet
         if: steps.upstream.outputs.version == ''

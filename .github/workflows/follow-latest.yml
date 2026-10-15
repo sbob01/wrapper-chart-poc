@@ -36,7 +36,7 @@ jobs:
 
       - name: Discover latest supported lines
         run: |
-          ./scripts/find_latest_lines.sh 12 5 > /tmp/supported-lines.json
+          bash ./scripts/find_latest_lines.sh 12 5 > /tmp/supported-lines.json
           mv /tmp/supported-lines.json config/supported-lines.json
 
       - name: Commit supported lines if changed
@@ -71,7 +71,7 @@ jobs:
         id: upstream
         env:
           SIMULATED_UPSTREAM_VERSION: ${{ inputs.simulated_upstream_version }}
-        run: ./scripts/find_latest_upstream.sh
+        run: bash ./scripts/find_latest_upstream.sh
 
       - name: Nothing to update
         if: steps.upstream.outputs.version == ''
