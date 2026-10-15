@@ -98,8 +98,8 @@ jobs:
       - name: Validate chart
         if: steps.version.outputs.changed == 'true'
         run: |
-          helm lint chart-wrapper
-          helm template wrapper-demo chart-wrapper > /dev/null
+          helm lint chart-wrapper --namespace apigee
+          helm template wrapper-demo chart-wrapper --namespace apigee > /dev/null
 
       - name: Show release-line transition
         if: steps.version.outputs.changed == 'true' && (steps.version.outputs.change_type == 'minor' || steps.version.outputs.change_type == 'major')
