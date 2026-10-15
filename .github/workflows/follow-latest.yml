@@ -36,7 +36,7 @@ jobs:
 
       - name: Discover latest supported lines
         run: |
-          bash ./scripts/find_latest_lines.sh 12 5 > /tmp/supported-lines.json
+          bash ./scripts/find_latest_lines.sh 5 > /tmp/supported-lines.json
           mv /tmp/supported-lines.json config/supported-lines.json
 
       - name: Commit supported lines if changed
