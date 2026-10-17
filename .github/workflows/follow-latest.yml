@@ -1,6 +1,6 @@
 name: Follow latest Apigee line
 
-# on:
+on:
 #   schedule:
 #     - cron: "17 5 * * *"
   workflow_dispatch:
